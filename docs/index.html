@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+  SNAKE GAME — Browser (Web) Edition
+  ----------------------------------------------------------------------------
+  ATTRIBUTION:
+  This web version is an AI-assisted port of the original Python game written
+  by Shivam Joshi (github.com/shivamexe959) — see main.py, snake.py, food.py
+  and scoreboard.py in this repository.
+
+  Purpose: web demo only, so the game can be played in any browser via
+  GitHub Pages. The Python version remains the author's original work.
+  ============================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SNAKE GAME — Web Edition</title>
+<style>
+  body {
+    background: #111;
+    color: #fff;
+    font-family: Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    margin: 0;
+  }
+  h1 { margin: 12px 0; letter-spacing: 2px; }
+  #game { border: 2px solid #333; background: #000; }
+  #menu, #gameover {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: rgba(0,0,0,0.85);
+    width: 600px;
+    height: 600px;
+    text-align: center;
+  }
+  #wrap { position: relative; width: 600px; height: 600px; }
+  button {
+    background: #fff; color: #000; border: none;
+    font-size: 18px; padding: 12px 28px; cursor: pointer; border-radius: 6px;
+  }
+  button:hover { background: #ccc; }
+  .hint { color: #888; font-size: 14px; }
+  .credit { color: #666; font-size: 12px; margin-top: 12px; max-width: 600px; text-align: center; }
+  #gameover { display: none; }
+</style>
+</head>
+<body>
+<h1>SNAKE GAME</h1>
+<div id="wrap">
+  <canvas id="game" width="600" height="600"></canvas>
+  <div id="menu">
+    <h2>Choose Wall Mode</h2>
+    <button id="classicBtn">Classic<br><small>wall = game over</small></button>
+    <button id="wrapBtn">Wraparound<br><small>Snake II style</small></button>
+    <div class="hint">Controls: Arrow keys or W A S D</div>
+  </div>
+  <div id="gameover">
+    <h2>GAME OVER</h2>
+    <div id="finalScore"></div>
+    <button id="againBtn">Play Again</button>
+    <div class="hint">or press Space</div>
+  </div>
+</div>
+<div class="credit">
+  Web edition — AI-assisted port of Shivam Joshi's original Python game.<br>
+  Playable in any browser; the Python source is the original work.
+</div>
+
+<script>
+"use strict";
+/* Game constants — same values as the Python original */
+var CELL = 20;          // MOVE_DISTANCE
+var LIMIT = 280;        // wall boundary (600px screen, 20px margin)
+var TICK_MS = 100;      // time.sleep(.1)
+var SCORE_STEP = 7;      // scoreboard.increase_score()
+
+/* Game state */
+var S = null;
+
+function newGame(mode) {
+  S = {
+    mode: mode,                       // 'classic' | 'wraparound'
+    snake: [{x:0,y:0},{x:-20,y:0},{x:-40,y:0}],  // STARTING_POSITIONS
+    dir: {x:20, y:0},                 // heading RIGHT
+    food: null,
+    score: 0,
+    over: false,
+    timer: null
+  };
+  placeFood();
+}
+
+/* food.refresh() — random position in [-280, 280] */
+function placeFood() {
+  S.food = {
+    x: Math.floor(Math.random() * 561) - 280,
+    y: Math.floor(Math.random() * 561) - 280
+  };
+}
+
+function dist(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+/* snake.up/down/left/right — no reversing, like the Python version */
+function setDir(dx, dy) {
+  if (!S || S.over) return;
+  // heading() != opposite — can't reverse into yourself
+  if (dx === -S.dir.x && dy === -S.dir.y) return;
+  if (dx === S.dir.x && dy === S.dir.y) return;
+  S.dir = {x: dx, y: dy};
+}
+
+/* One game step — mirrors main.py's while loop */
+function tick() {
+  if (!S || S.over) return;
+  var snake = S.snake;
+
+  // Save all current positions, then move (snake.move())
+  var old = snake.map(function(s){ return {x:s.x, y:s.y}; });
+  snake[0].x += S.dir.x;
+  snake[0].y += S.dir.y;
+  for (var i = 1; i < snake.length; i++) {
+    snake[i].x = old[i-1].x;
+    snake[i].y = old[i-1].y;
+  }
+  var head = snake[0];
+
+  // Food collision: distance < 15
+  if (dist(head, S.food) < 15) {
+    placeFood();            // food.refresh()
+    S.score += SCORE_STEP;  // scoreboard.increase_score()
+    var tail = snake[snake.length-1];
+    snake.push({x: tail.x, y: tail.y});  // snake.extend()
+  }
+
+  // Wall handling
+  var outX = head.x > LIMIT || head.x < -LIMIT;
+  var outY = head.y > LIMIT || head.y < -LIMIT;
+  if (S.mode === 'wraparound') {
+    if (outX) head.x = -head.x;   // Snake II style teleport
+    if (outY) head.y = -head.y;
+  } else if (outX || outY) {
+    endGame();                    // Classic: wall = game over
+    return;
+  }
+
+  // Tail collision (both modes): distance < 10
+  for (var j = 1; j < snake.length; j++) {
+    if (dist(head, snake[j]) < 10) {
+      endGame();
+      return;
+    }
+  }
+}
+
+function endGame() {
+  S.over = true;
+  if (S.timer) { clearInterval(S.timer); S.timer = null; }
+}
+
+/* ---- Rendering ---- */
+var canvas = (typeof document !== 'undefined') ? document.getElementById('game') : null;
+var ctx = canvas ? canvas.getContext('2d') : null;
+
+function draw() {
+  if (!ctx || !S) return;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, 600, 600);
+
+  // Score — scoreboard.write at (0, 270)
+  ctx.fillStyle = '#fff';
+  ctx.font = '20px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('Score : ' + S.score, 300, 40);
+
+  // Food — red circle
+  ctx.fillStyle = 'red';
+  ctx.beginPath();
+  ctx.arc(S.food.x + 300, 300 - S.food.y, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Snake — white squares
+  ctx.fillStyle = '#fff';
+  S.snake.forEach(function(s){
+    ctx.fillRect(s.x + 300 - 10, 300 - s.y - 10, 20, 20);
+  });
+
+  if (S.over) {
+    ctx.fillStyle = '#fff';
+    ctx.font = '20px Arial';
+    ctx.fillText('GAME OVER', 300, 300);
+  }
+}
+
+/* ---- Wiring (browser only) ---- */
+if (typeof document !== 'undefined') {
+  var menu = document.getElementById('menu');
+  var over = document.getElementById('gameover');
+  var finalScore = document.getElementById('finalScore');
+
+  function start(mode) {
+    newGame(mode);
+    menu.style.display = 'none';
+    over.style.display = 'none';
+    if (S.timer) clearInterval(S.timer);
+    S.timer = setInterval(function(){ tick(); draw(); }, TICK_MS);
+    draw();
+    // watch for game over to show overlay
+    var watch = setInterval(function(){
+      if (S.over) {
+        clearInterval(watch);
+        finalScore.textContent = 'Score : ' + S.score;
+        over.style.display = 'flex';
+      }
+    }, 120);
+  }
+
+  document.getElementById('classicBtn').addEventListener('click', function(){ start('classic'); });
+  document.getElementById('wrapBtn').addEventListener('click', function(){ start('wraparound'); });
+  document.getElementById('againBtn').addEventListener('click', function(){ start(S.mode); });
+
+  document.addEventListener('keydown', function(e){
+    var k = e.key.toLowerCase();
+    if (['arrowup','arrowdown','arrowleft','arrowright',' '].indexOf(k) >= 0) e.preventDefault();
+    // Arrow keys + WASD — same bindings as main.py
+    if (k === 'arrowup' || k === 'w') setDir(0, 20);        // UP
+    else if (k === 'arrowdown' || k === 's') setDir(0, -20); // DOWN
+    else if (k === 'arrowleft' || k === 'a') setDir(-20, 0); // LEFT
+    else if (k === 'arrowright' || k === 'd') setDir(20, 0);  // RIGHT
+    else if (k === ' ' && S && S.over) start(S.mode);
+  });
+
+  // initial paint behind the menu
+  newGame('classic');
+  draw();
+  S = null;
+}
+</script>
+</body>
+</html>
